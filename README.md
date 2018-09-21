@@ -39,6 +39,12 @@ usage: csgo-csmd [-h] [--config-path CONFIG_PATH] [--csgo-path CSGO_PATH]
 
 optional arguments:
   -h, --help            show this help message and exit
+  -s SERVER, --server SERVER
+                        Server address to start from
+                        Used when 'condump' doesn't contain it
+                        	Find the address in the console
+                        	before disconnecting
+
   --config-path CONFIG_PATH
                         Path to CSMD config (default:
                         /home/$USER/.config/csmd/csmd.conf)
