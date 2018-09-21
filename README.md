@@ -23,7 +23,10 @@ chmod +x /usr/local/bin/csgo-csmd
 ## Usage
 
 1. Find a community server that your client refuses to connect to ("Downloading map <mapname> 0 % / 0 bytes").
-2. Open CS:GO console (press `~` A.K.A. tilde, one has to have `-console` in the [game launch options](https://steamcommunity.com/sharedfiles/filedetails/?id=379782151) or `con_enable "1"` in [autoexec.cfg](http://dathost.net/blog/how-to-create-an-autoexec-cfg-for-csgo/)).
+2. Open CS:GO console (press `~` A.K.A. tilde); several ways to enable the console:
+      * In-game via Settings -> Game Settings -> Enable Console
+      * `-console` in the [game launch options](https://steamcommunity.com/sharedfiles/filedetails/?id=379782151) 
+      * `con_enable "1"` in [autoexec.cfg](http://dathost.net/blog/how-to-create-an-autoexec-cfg-for-csgo/))
 3. Type `disconnect` and press `Enter`.
 4. Open the console again.
 5. Type `condump` and press `Enter`.
@@ -34,8 +37,8 @@ chmod +x /usr/local/bin/csgo-csmd
 ### Command-line arguments
 
 ```
-usage: csgo-csmd [-h] [--config-path CONFIG_PATH] [--csgo-path CSGO_PATH]
-                 [--condump CONDUMP]
+usage: csgo-csmd [-h] [-s SERVER] [-m MATERIAL] [--condump CONDUMP]
+                 [--config-path CONFIG_PATH] [--csgo-path CSGO_PATH]
 
 optional arguments:
   -h, --help            show this help message and exit
@@ -44,15 +47,24 @@ optional arguments:
                         Used when 'condump' doesn't contain it
                         	Find the address in the console
                         	before disconnecting
-
-  --config-path CONFIG_PATH
-                        Path to CSMD config (default:
-                        /home/$USER/.config/csmd/csmd.conf)
-  --csgo-path CSGO_PATH
-                        Path to CS:GO home folder (default:
-                        /home/$USER/.local/share/Steam/steamapps/common/Counter-Strike Global Offensive/csgo)
+                        
+                        WARNING: Will get all available data from `condump`
+  -m MATERIAL, --material MATERIAL
+                        Single material to retrieve from server
+                        You may be prompted to give the server's address
+                        	Find the address in the console before
+                        	disconnecting (probably the material as well)
+                        
+                        NOTICE: The material is everything after: 'website.com/'
   --condump CONDUMP     Console dump to use, can be either 'latest'
                         or 'condumpXXX.txt' where X is a 0-9 digit
+  --config-path CONFIG_PATH
+                        Path to CSMD config (default:)
+                        /home/$USER/.config/csmd/csmd.conf
+  --csgo-path CSGO_PATH
+                        Path to CS:GO home folder (default:)
+                        /home/$USER/.local/share/Steam/steamapps/
+                          common/Counter-Strike Global Offensive/csgo
 ```
 
 ## Configuration
@@ -69,7 +81,7 @@ condump = latest
 ```
 
 * `csgo_path` can be anything `--csgo-path` accepts (see above)
-* `type` can only be `condump` just for now
+* `type` can only be `condump` (the other option would be `con_logfile`, but that needs a fix from the CS:GO devs)
 * `condump` can be anything `--condump` accepts (see above)
 
 ## Bugs and feature requests
