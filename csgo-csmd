@@ -11,7 +11,7 @@ from typing import Any, Union
 from urllib import request
 from urllib.error import HTTPError
 
-__version__ = "0.2.0"
+__version__ = "0.2.1"
 
 
 class ANSIColors:
@@ -65,6 +65,14 @@ class VerifyCLASyntax:
                                         .format(ANSIColors.red, ANSIColors.end))
             else:
                 return path
+    
+    @staticmethod
+    def server(address: str) -> str:
+        return address
+    
+    @staticmethod
+    def material(material: str) -> str:
+        return material
 
 
 class ShouldNeverHappenError(Exception):
@@ -108,7 +116,7 @@ class CSMD:
             ".local/share/Steam/steamapps/common/"
             "Counter-Strike Global Offensive/csgo"))
         config['log'] = {}
-        config['log']['type'] = "condump"  # TODO: log_file
+        config['log']['type'] = "condump"  # TODO: con_logfile (Currently broken, needs fix from CS:GO devs.)
         config['log']['condump'] = "latest"
 
         with self.config_path.open('w') as f:
@@ -136,20 +144,37 @@ class CSMD:
             formatter_class=RawTextHelpFormatter,
             epilog="More: https://github.com/light2yellow/csgo-csmd")
         parser.add_argument(
-            "--config-path",
-            help="Path to CSMD config (default:\n"
-                 "/home/$USER/.config/csmd/csmd.conf)",
-            type=VerifyCLASyntax.path)
+            "-s", "--server",
+            help="Server address to start from\n"
+                     "Used when 'condump' doesn't contain it\n"
+                     "\tFind the address in the console\n"
+                     "\tbefore disconnecting\n\n"
+                     "WARNING: Will get all available data from `condump`\n",
+            type=VerifyCLASyntax.server)
         parser.add_argument(
-            "--csgo-path",
-            help="Path to CS:GO home folder (default:\n"
-                 "/home/$USER/.local/share/Steam/steamapps/common/Counter-Strike Global Offensive/csgo)",
-                 type=VerifyCLASyntax.path)
+            "-m", "--material",
+            help="Single material to retrieve from server\n"
+                     "You may be prompted to give the server's address\n"
+                     "\tFind the address in the console before\n"
+                     "\tdisconnecting (probably the material as well)\n\n"
+                     "NOTICE: The material is everything after: 'website.com/'\n",
+            type=VerifyCLASyntax.material)
         parser.add_argument(
             "--condump",
             help="Console dump to use, can be either 'latest'\n"
                  "or 'condumpXXX.txt' where X is a 0-9 digit",
             type=VerifyCLASyntax.condump)
+        parser.add_argument(
+            "--config-path",
+            help="Path to CSMD config (default:)\n"
+                 "/home/$USER/.config/csmd/csmd.conf",
+            type=VerifyCLASyntax.path)
+        parser.add_argument(
+            "--csgo-path",
+            help="Path to CS:GO home folder (default:)\n"
+                 "/home/$USER/.local/share/Steam/steamapps/\n"
+                 "\tcommon/Counter-Strike Global Offensive/csgo",
+                 type=VerifyCLASyntax.path)
         return parser
 
     def parse_args(self, args: Any) -> None:
@@ -164,6 +189,31 @@ class CSMD:
 
         if args.condump:
             self.condump = args.condump
+            
+        if args.server:
+            self.base_url = args.server
+            
+        # Since we only want this one material,
+        # we can write a little module for that
+        # and then exit out.
+        if args.material:
+            if args.material.endswith('.'):
+                self.materials.append(args.material[:-1])
+            else:
+                self.materials.append(args.material)
+            
+            print("{0}Entering single material-mode...{1}"
+                  .format(ANSIColors.green, ANSIColors.end))
+            
+            # Request server address
+            if not self.base_url:
+                print("{0} You can pass this in the '-s' argument in combination with '-m'{1}"
+                      .format(ANSIColors.yellow, ANSIColors.end))
+                self.base_url = input("Please enter server address: ")
+            
+            self.download_materials()
+            self.end()
+            exit(1)
 
         if self.condump == "latest":
             try:
@@ -184,43 +234,59 @@ class CSMD:
         with self.condump.open() as file:
             lines = file.readlines()
 
-            addresses = [_ for _ in lines if _.startswith("Connected to")]
-            if not addresses:
-                raise IndexError("{0}Server IP not found{1}"
-                                 .format(ANSIColors.red, ANSIColors.end))
+            # We need to check if the server has
+            # already been passed through, if not
+            # search for it here
+            if not self.base_url:
+                addresses = [_ for _ in lines if _.startswith("Connected to")]
+                if not addresses:
+                    raise IndexError("{0}Server IP not found\n"
+                                                "{1}\tHave you tried submitting the server's\n"
+                                                "\taddress? (Found before disconnecting){2}"
+                                     .format(ANSIColors.red, ANSIColors.yellow,  ANSIColors.end))
 
-            self.ip_port = addresses[0].split()[-1]
-            print("{0}Server: {1}{2}"
-                  .format(ANSIColors.blue, self.ip_port, ANSIColors.end))
+                self.ip_port = addresses[0].split()[-1]
+                print("{0}Server: {1}{2}"
+                      .format(ANSIColors.blue, self.ip_port, ANSIColors.end))
 
-            full_urls = [_ for _ in lines if _.startswith("Downloading")]
-            if not full_urls:
-                raise IndexError("{0}Download URL not found{1}"
-                                 .format(ANSIColors.red, ANSIColors.end))
+                full_urls = [_ for _ in lines if _.startswith("Downloading")]
+                if not full_urls:
+                    raise IndexError("{0}Download URL not found{1}"
+                                     .format(ANSIColors.red, ANSIColors.end))
 
-            full_url = full_urls[0].split()[-1]
+                full_url = full_urls[0].split()[-1]
 
-            rpaths = [_ for _ in lines if _.startswith("Aborting download of")]
-            if not rpaths:
-                raise IndexError("{0}'Aborted' relative path not found{1}"
-                                 .format(ANSIColors.red, ANSIColors.end))
+                rpaths = [_ for _ in lines if _.startswith("Aborting download of")]
+                if not rpaths:
+                    raise IndexError("{0}'Aborted' relative path not found{1}"
+                                     .format(ANSIColors.red, ANSIColors.end))
 
-            rpath = rpaths[0].split()[-1]
+                rpath = rpaths[0].split()[-1]
 
-            i = 0
-            try:
-                i = full_url.index(rpath)
-            except ValueError:
-                print("{0}{1}Relative path not found in full URL!{2}"
-                      .format(ANSIColors.bold, ANSIColors.red, ANSIColors.end))
-                exit(1)
+                i = 0
+                try:
+                    i = full_url.index(rpath)
+                except ValueError:
+                    print("{0}{1}Relative path not found in full URL!{2}"
+                          .format(ANSIColors.bold, ANSIColors.red, ANSIColors.end))
+                    exit(1)
 
-            self.base_url = full_url[0:i]
-            print("{0}Base URL: {1}{2}\n"
-                  .format(ANSIColors.blue, self.base_url, ANSIColors.end))
-
-            # first material is in the "Aborting" line
-            self.materials.append(rpath)
+                self.base_url = full_url[0:i]
+                print("{0}Base URL: {1}{2}\n"
+                      .format(ANSIColors.blue, self.base_url, ANSIColors.end))
+                      
+                
+                # first material is in the "Aborting" line
+                self.materials.append(rpath)
+            else:
+                print("{0}Server IP not found, server address already given.\n"
+                          " Assuming 'condump' incomplete\n" 
+                          "\t{1}If there are still files to acquire from the server,\n"
+                          "\tyou'll have to manually add them via the '-m' argument{2}"
+                                 .format(ANSIColors.red, ANSIColors.yellow, ANSIColors.end))
+            
+            # Since there's no server address to find,
+            # the aborthing line won't always be there
             materials = [_.split() for _ in lines if _.startswith("Discarding")]
             if not materials:
                 raise IndexError("{0}Discarded materials not found{1}"
@@ -228,9 +294,47 @@ class CSMD:
 
             self.materials.extend([_[-1] for _ in materials])
 
+    def check_material(self, material: str) -> None:
+        if material not in self.materials:
+            if "appended" not in self.materials:
+                self.materials.append("appended")
+            self.materials.append(material)
+
+    def bz2_process(self, url: str, fpath: str, material: str) -> None:
+        try:
+            with request.urlopen(url) as response, \
+                    fpath.with_suffix("").open('wb') as f:
+                print("{0}{1} Processing package...{2}"
+                      .format(ANSIColors.bold, ANSIColors.blue, ANSIColors.end))
+                f.write(decompress(response.read()))
+        except HTTPError as err:
+            # We know that we ignore 404 and raise
+            # everything else, though we need to
+            # check for its counterpart even though
+            # it is often redundant at this point
+            self.check_material(material[:-4])
+            HTPPErrorHandler(err).handle()
+                
+    def non_bz2_process(self, url: str, fpath: str, material: str) -> None: 
+        try:
+            with request.urlopen(url) as response, \
+                    fpath.open('wb') as f:
+                # Use shutil to write response on-the-fly
+                copyfileobj(response, f)
+        except HTTPError as err:
+            # We know that we ignore 404 and raise
+            # everything else, though we need to
+            # check for its counterpart
+            self.check_material(material + ".bz2")
+            HTPPErrorHandler(err).handle()
+
     def download_materials(self) -> None:
         for material in self.materials:
-            print("{0}{1}Requesting {2}{3}".format(
+            if material == "appended":
+                print("\n{0}  Processing appened material(s){1}".format(
+                    ANSIColors.green, ANSIColors.end))
+                continue
+            print("{0}{1}Checking {2}...{3}".format(
                 ANSIColors.bold, ANSIColors.purple, material, ANSIColors.end))
 
             url = self.base_url + material
@@ -247,29 +351,17 @@ class CSMD:
 
             # Decompressing on-the-fly, thus with_suffix("")
             if fpath.suffix == ".bz2":
-                try:
-                    with request.urlopen(url) as response, \
-                            fpath.with_suffix("").open('wb') as f:
-                        print("{0}{1} Decompressing bzip2{3}"
-                              .format(ANSIColors.bold, ANSIColors.blue,
-                                      material, ANSIColors.end))
-                        f.write(decompress(response.read()))
-                except HTTPError as err:
-                    HTPPErrorHandler(err).handle()
-                    # We know that we ignore 404 and raise
-                    # everything else, so it's safe to continue
-                    continue
+                self.bz2_process(url, fpath, material)
             else:
-                try:
-                    with request.urlopen(url) as response, \
-                            fpath.open('wb') as f:
-                        # Use shutil to write response on-the-fly
-                        copyfileobj(response, f)
-                except HTTPError as err:
-                    HTPPErrorHandler(err).handle()
-                    # We know that we ignore 404 and raise
-                    # everything else, so it's safe to continue
-                    continue
+                self.non_bz2_process(url, fpath, material)
+    
+    def end(self) -> None:
+        print("\n{0}{1}Success!{2}"
+              .format(ANSIColors.bold, ANSIColors.blue, ANSIColors.end))
+        if self.ip_port:
+            print("{0}{1} connect {2}{3}"
+                  .format(ANSIColors.bold, ANSIColors.green,
+                          self.ip_port, ANSIColors.end))
 
 
 if __name__ == '__main__':
@@ -280,9 +372,5 @@ if __name__ == '__main__':
     csmd.parse_args(CSMD.setup_args().parse_args())
     csmd.parse_console_log()
     csmd.download_materials()
-
-    print("\n{0}{1}Success!{2}"
-          .format(ANSIColors.bold, ANSIColors.blue, ANSIColors.end))
-    print("{0}{1} connect {2}{3}"
-          .format(ANSIColors.bold, ANSIColors.green,
-                  csmd.ip_port, ANSIColors.end))
+    
+    csmd.end()
