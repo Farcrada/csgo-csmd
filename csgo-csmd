@@ -319,6 +319,8 @@ class CSMD:
         try:
             with request.urlopen(url) as response, \
                     fpath.open('wb') as f:
+                print("{0}{1} Processing file...{2}"
+                      .format(ANSIColors.bold, ANSIColors.blue, ANSIColors.end))
                 # Use shutil to write response on-the-fly
                 copyfileobj(response, f)
         except HTTPError as err:
