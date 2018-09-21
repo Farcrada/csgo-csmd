@@ -259,9 +259,9 @@ class CSMD:
             self.materials.extend([_[-1] for _ in materials])
 
     def check_material(self, material: str) -> None:
-        if "appended" not in self.materials:
-            self.materials.append("appended")
         if material not in self.materials:
+            if "appended" not in self.materials:
+                self.materials.append("appended")
             self.materials.append(material)
 
     def bz2_process(self, url: str, fpath: str, material: str) -> None:
