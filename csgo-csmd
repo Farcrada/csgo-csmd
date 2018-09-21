@@ -65,10 +65,14 @@ class VerifyCLASyntax:
                                         .format(ANSIColors.red, ANSIColors.end))
             else:
                 return path
-                
+    
     @staticmethod
     def server(address: str) -> str:
         return address
+    
+    @staticmethod
+    def material(material: str) -> str:
+        return material
 
 
 class ShouldNeverHappenError(Exception):
@@ -112,7 +116,7 @@ class CSMD:
             ".local/share/Steam/steamapps/common/"
             "Counter-Strike Global Offensive/csgo"))
         config['log'] = {}
-        config['log']['type'] = "condump"  # TODO: log_file (Currently broken, needs fix from CS:GO devs.)
+        config['log']['type'] = "condump"  # TODO: con_logfile (Currently broken, needs fix from CS:GO devs.)
         config['log']['condump'] = "latest"
 
         with self.config_path.open('w') as f:
@@ -144,23 +148,33 @@ class CSMD:
             help="Server address to start from\n"
                      "Used when 'condump' doesn't contain it\n"
                      "\tFind the address in the console\n"
-                     "\tbefore disconnecting",
+                     "\tbefore disconnecting\n\n"
+                     "WARNING: Will get all available data from `condump`\n",
             type=VerifyCLASyntax.server)
         parser.add_argument(
-            "--config-path",
-            help="Path to CSMD config (default:\n"
-                 "/home/$USER/.config/csmd/csmd.conf)",
-            type=VerifyCLASyntax.path)
-        parser.add_argument(
-            "--csgo-path",
-            help="Path to CS:GO home folder (default:\n"
-                 "/home/$USER/.local/share/Steam/steamapps/common/Counter-Strike Global Offensive/csgo)",
-                 type=VerifyCLASyntax.path)
+            "-m", "--material",
+            help="Single material to retrieve from server\n"
+                     "You may be prompted to give the server's address\n"
+                     "\tFind the address in the console before\n"
+                     "\tdisconnecting (probably the material as well)\n\n"
+                     "NOTICE: The material is everything after: 'website.com/'\n",
+            type=VerifyCLASyntax.material)
         parser.add_argument(
             "--condump",
             help="Console dump to use, can be either 'latest'\n"
                  "or 'condumpXXX.txt' where X is a 0-9 digit",
             type=VerifyCLASyntax.condump)
+        parser.add_argument(
+            "--config-path",
+            help="Path to CSMD config (default:)\n"
+                 "/home/$USER/.config/csmd/csmd.conf",
+            type=VerifyCLASyntax.path)
+        parser.add_argument(
+            "--csgo-path",
+            help="Path to CS:GO home folder (default:)\n"
+                 "/home/$USER/.local/share/Steam/steamapps/\n"
+                 "\tcommon/Counter-Strike Global Offensive/csgo",
+                 type=VerifyCLASyntax.path)
         return parser
 
     def parse_args(self, args: Any) -> None:
@@ -178,6 +192,28 @@ class CSMD:
             
         if args.server:
             self.base_url = args.server
+            
+        # Since we only want this one material,
+        # we can write a little module for that
+        # and then exit out.
+        if args.material:
+            if args.material.endswith('.'):
+                self.materials.append(args.material[:-1])
+            else:
+                self.materials.append(args.material)
+            
+            print("{0}Entering single material-mode...{1}"
+                  .format(ANSIColors.green, ANSIColors.end))
+            
+            # Request server address
+            if not self.base_url:
+                print("{0} You can pass this in the '-s' argument in combination with '-m'{1}"
+                      .format(ANSIColors.yellow, ANSIColors.end))
+                self.base_url = input("Please enter server address: ")
+            
+            self.download_materials()
+            self.end()
+            exit(1)
 
         if self.condump == "latest":
             try:
@@ -245,12 +281,12 @@ class CSMD:
             else:
                 print("{0}Server IP not found, server address already given.\n"
                           " Assuming 'condump' incomplete\n" 
-                          "\t{1}Please do another 'condump' after reconnecting\n"
-                          "\tto the server to acquire the other missing files{2}"
+                          "\t{1}If there are still files to acquire from the server,\n"
+                          "\tyou'll have to manually add them via the '-m' argument{2}"
                                  .format(ANSIColors.red, ANSIColors.yellow, ANSIColors.end))
             
             # Since there's no server address to find,
-            # the aborthing line won't be the first
+            # the aborthing line won't always be there
             materials = [_.split() for _ in lines if _.startswith("Discarding")]
             if not materials:
                 raise IndexError("{0}Discarded materials not found{1}"
@@ -318,6 +354,14 @@ class CSMD:
                 self.bz2_process(url, fpath, material)
             else:
                 self.non_bz2_process(url, fpath, material)
+    
+    def end(self) -> None:
+        print("\n{0}{1}Success!{2}"
+              .format(ANSIColors.bold, ANSIColors.blue, ANSIColors.end))
+        if self.ip_port:
+            print("{0}{1} connect {2}{3}"
+                  .format(ANSIColors.bold, ANSIColors.green,
+                          self.ip_port, ANSIColors.end))
 
 
 if __name__ == '__main__':
@@ -328,9 +372,5 @@ if __name__ == '__main__':
     csmd.parse_args(CSMD.setup_args().parse_args())
     csmd.parse_console_log()
     csmd.download_materials()
-
-    print("\n{0}{1}Success!{2}"
-          .format(ANSIColors.bold, ANSIColors.blue, ANSIColors.end))
-    print("{0}{1} connect {2}{3}"
-          .format(ANSIColors.bold, ANSIColors.green,
-                  csmd.ip_port, ANSIColors.end))
+    
+    csmd.end()
